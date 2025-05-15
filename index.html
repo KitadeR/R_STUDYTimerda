@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>勉強時間記録</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f7f7f7;
+    }
+    h1, h2, h3 {
+      color: #333;
+    }
+    .input-area, .subject-management, #summaryTable, .add-record {
+      background: #fff;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    label {
+      display: inline-block;
+      width: 80px;
+      margin-right: 10px;
+    }
+    input[type="text"], input[type="datetime-local"], select {
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 200px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      margin-top: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    ul {
+      list-style-type: none;
+      padding-left: 0;
+    }
+    ul li {
+      background: #fff;
+      margin-bottom: 5px;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer; /* カーソルをポインターに変更してクリック可能であることを示す */
+    }
+    ul li button {
+      background-color: #e74c3c;
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+    ul li button:hover {
+      background-color: #c0392b;
+    }
+    #dailyTotal {
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    #studyChart {
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      max-width: 800px;
+      max-height: 400px;
+    }
+    .record-control {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    #startTimeDisplay {
+      margin-left: 10px;
+      font-size: 1em;
+      color: #555;
+    }
+    #summaryTable table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    #summaryTable th, #summaryTable td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    #summaryTable th {
+      background-color: #f0f0f0;
+    }
+  </style>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, orderBy, Timestamp, onSnapshot, query, deleteDoc, doc, getDocs, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQGXHwTEcg-xGKvFi1V-vIPJwS-PR4_7Y",
+      authDomain: "studytimerda.firebaseapp.com",
+      projectId: "studytimerda",
+      storageBucket: "studytimerda.firebasestorage.app",
+      messagingSenderId: "528673388784",
+      appId: "1:528673388784:web:34b5826cd213ee6a0c6a35"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const db = getFirestore(app);
+    const recordsCollection = collection(db, 'studyRecords');
+    const subjectsCollection = collection(db, 'subjects');
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const subjectInput = document.getElementById('subject');
+      const startTimeInput = document.getElementById('startTime');
+      const endTimeInput = document.getElementById('endTime');
+      const recordButton = document.getElementById('recordButton');
+      const addSubjectInput = document.getElementById('addSubject');
+      const addSubjectButton = document.getElementById('addSubjectButton');
+      const subjectList = document.getElementById('subjectList');
+      const recordList = document.getElementById('recordList');
+      const dailyTotalDiv = document.getElementById('dailyTotal');
+      const studyChartCtx = document.getElementById('studyChart').getContext('2d');
+      const startButton = document.createElement('button');
+      startButton.textContent = '開始';
+      const endButton = document.createElement('button');
+      endButton.textContent = '終了';
+      const startTimeDisplay = document.createElement('span');
+      startTimeDisplay.id = 'startTimeDisplay';
+      let currentStartTime;
+      const summaryTableDiv = document.getElementById('summaryTable');
+
+      let studyChart;
+
+      const inputAreaDiv = document.querySelector('.input-area > div:first-child').parentNode;
+      const recordControlDiv = document.createElement('div');
+      recordControlDiv.classList.add('record-control');
+      recordControlDiv.appendChild(startButton);
+      recordControlDiv.appendChild(endButton);
+      recordControlDiv.appendChild(startTimeDisplay);
+      inputAreaDiv.appendChild(recordControlDiv);
+
+      // ★ 修正: ここで summaryTableDiv を追加するのは一度だけにします
+      if (!document.getElementById('summaryTable')) {
+        const newSummaryTableDiv = document.createElement('div');
+        newSummaryTableDiv.id = 'summaryTable';
+        document.body.appendChild(newSummaryTableDiv);
+        newSummaryTableDiv.innerHTML = '<h2>科目別・日付別 合計勉強時間</h2><table><thead><tr><th>日付</th><th>科目</th><th>合計時間</th></tr></thead><tbody id="summaryTableBody"></tbody></table>';
+      }
+      const summaryTableBody = document.getElementById('summaryTableBody');
+
+      // 勉強時間を追加するための要素を取得
+      const addSubjectSelect = document.getElementById('addSubjectSelect');
+      const addStartTime = document.getElementById('addStartTime');
+      const addEndTime = document.getElementById('addEndTime');
+      const addRecordButton = document.getElementById('addRecordButton');
+
+      // 科目リストをドロップダウンに表示
+      const qSubjects = query(subjectsCollection, orderBy('name'));
+      onSnapshot(qSubjects, (snapshot) => {
+        addSubjectSelect.innerHTML = '<option value="">選択してください</option>';
+        snapshot.forEach(docSnap => {
+          const subject = docSnap.data().name;
+          const option = document.createElement('option');
+          option.value = subject;
+          option.textContent = subject;
+          addSubjectSelect.appendChild(option);
+        });
+      });
+
+      // 勉強時間を追加する処理
+      addRecordButton.addEventListener('click', async () => {
+        const subject = addSubjectSelect.value;
+        const startTime = addStartTime.value;
+        const endTime = addEndTime.value;
+
+        if (!subject || !startTime || !endTime) {
+          alert('すべての項目を入力してください');
+          return;
+        }
+
+        const start = new Date(startTime);
+        const end = new Date(endTime);
+
+        if (start >= end) {
+          alert('開始時刻は終了時刻より前である必要があります');
+          return;
+        }
+
+        try {
+          await addDoc(recordsCollection, {
+            subject: subject,
+            startTime: Timestamp.fromDate(start),
+            endTime: Timestamp.fromDate(end)
+          });
+          alert('勉強時間を追加しました');
+          addStartTime.value = '';
+          addEndTime.value = '';
+          addSubjectSelect.value = '';
+        } catch (error) {
+          alert('勉強時間の追加に失敗しました: ' + error.message);
+          console.error('勉強時間の追加エラー:', error);
+        }
+      });
+
+      // Load subjects and listen for changes
+      onSnapshot(qSubjects, (snapshot) => {
+        subjectList.innerHTML = '';
+        snapshot.forEach(docSnap => {
+          const subject = docSnap.data().name;
+          const li = document.createElement('li');
+          li.textContent = subject;
+          li.addEventListener('click', () => {
+            subjectInput.value = subject;
+          });
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = '削除';
+          deleteBtn.addEventListener('click', async () => {
+            if(confirm(`科目「${subject}」を削除しますか？`)){
+              await deleteDoc(doc(db, 'subjects', docSnap.id));
+            }
+          });
+          li.appendChild(deleteBtn);
+          subjectList.appendChild(li);
+        });
+      });
+
+      // Add new subject
+      addSubjectButton.addEventListener('click', async () => {
+        const newSubject = addSubjectInput.value.trim();
+        if(newSubject === '') {
+          alert('科目名を入力してください');
+          return;
+        }
+        try {
+          const qExisting = query(subjectsCollection, where('name', '==', newSubject));
+          const existingSnapshot = await getDocs(qExisting);
+          if (!existingSnapshot.empty) {
+            alert('その科目は既に存在します');
+            return;
+          }
+          await addDoc(subjectsCollection, { name: newSubject });
+          addSubjectInput.value = '';
+        } catch (error) {
+          alert('科目の追加に失敗しました: ' + error.message);
+          console.error('科目の追加エラー:', error);
+        }
+      });
+
+      // Start timer
+      startButton.addEventListener('click', () => {
+        currentStartTime = new Date();
+        startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}`;
+        endTimeInput.value = ''; // Clear end time input
+      });
+
+      // End timer and record
+      endButton.addEventListener('click', async () => {
+        if (!currentStartTime) {
+          alert('「開始」ボタンを押して時間を計測してください。');
+          return;
+        }
+        const endTime = new Date();
+        endTimeInput.value = endTime.toISOString().slice(0, 16).replace('T', ' '); // Set end time input for visual feedback
+
+        const subject = subjectInput.value.trim();
+        if(subject === '') {
+          alert('科目を入力してください');
+          return;
+        }
+
+        try {
+          await addDoc(recordsCollection, {
+            subject: subject,
+            startTime: Timestamp.fromDate(currentStartTime),
+            endTime: Timestamp.fromDate(endTime)
+          });
+          subjectInput.value = '';
+          startTimeDisplay.textContent = '';
+          currentStartTime = null;
+          endTimeInput.value = '';
+        } catch (e) {
+          alert('記録の追加に失敗しました: ' + e.message);
+        }
+      });
+
+      // Load study records and listen for changes
+      const qRecords = query(recordsCollection, orderBy('startTime', 'desc'));
+      onSnapshot(qRecords, (snapshot) => {
+        recordList.innerHTML = '';
+        const subjectDailyTotals = {};
+
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          const start = data.startTime.toDate();
+          const end = data.endTime.toDate();
+          const durationMinutes = (end - start) / 1000 / 60;
+          const subject = data.subject;
+          const dateKey = start.toISOString().split('T')[0];
+
+          const durationDisplay = durationMinutes < 60 ? `${Math.floor(durationMinutes)}分` : `${(durationMinutes / 60).toFixed(2)}時間`;
+
+          const li = document.createElement('li');
+          li.textContent = `${subject} : ${start.toLocaleString()} 〜 ${end.toLocaleString()} （${durationDisplay}）`;
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = '削除';
+          deleteBtn.addEventListener('click', async () => {
+            if(confirm('この記録を削除しますか？')){
+              await deleteDoc(doc(db, 'studyRecords', docSnap.id));
+            }
+          });
+          li.appendChild(deleteBtn);
+          recordList.appendChild(li);
+
+          if(!subjectDailyTotals[dateKey]) subjectDailyTotals[dateKey] = {};
+          if(!subjectDailyTotals[dateKey][subject]) subjectDailyTotals[dateKey][subject] = 0;
+          subjectDailyTotals[dateKey][subject] += durationMinutes;
+        });
+
+        summaryTableBody.innerHTML = '';
+        Object.keys(subjectDailyTotals).sort().forEach(date => {
+          const subjectsOnDate = subjectDailyTotals[date];
+          Object.keys(subjectsOnDate).forEach(subject => {
+            const totalMinutes = subjectsOnDate[subject];
+            const durationDisplay = totalMinutes < 60 ? `${Math.floor(totalMinutes)}分` : `${(totalMinutes / 60).toFixed(2)}時間`;
+
+            const row = summaryTableBody.insertRow();
+            const dateCell = row.insertCell();
+            const subjectCell = row.insertCell();
+            const durationCell = row.insertCell();
+            dateCell.textContent = date;
+            subjectCell.textContent = subject;
+            durationCell.textContent = durationDisplay;
+          });
+        });
+
+        // 日別合計の表示をチャートのみにするため、dailyTotalDiv の処理は残しつつ非表示にします。
+        const dailyTotalsForChart = {};
+        snapshot.forEach(docSnap => {
+          const start = docSnap.data().startTime.toDate();
+          const end = docSnap.data().endTime.toDate();
+          const durationMinutes = (end - start) / 1000 / 60;
+          const dateKey = start.toISOString().split('T')[0];
+          if(!dailyTotalsForChart[dateKey]) dailyTotalsForChart[dateKey] = 0;
+          dailyTotalsForChart[dateKey] += durationMinutes / 60; // hours
+        });
+
+        const labels = Object.keys(dailyTotalsForChart).sort();
+        const dataPoints = labels.map(date => dailyTotalsForChart[date]);
+        if(studyChart) {
+          studyChart.data.labels = labels;
+          studyChart.data.datasets[0].data = dataPoints;
+          studyChart.update();
+        } else {
+          studyChart = new Chart(studyChartCtx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: '勉強時間（時間）',
+                data: dataPoints,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                fill: true,
+                tension: 0.1,
+              }]
+            },
+            options: {
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  title: {
+                    display: true,
+                    text: '時間 (h)'
+                  }
+                },
+                x: {
+                  title: {
+                    display: true,
+                    text: '日付'
+                  }
+                }
+              }
+            }
+          });
+        }
+      });
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>勉強時間記録</h1>
+
+  <div class="input-area">
+    <div>
+      <label for="subject">科目:</label>
+      <input type="text" id="subject">
+    </div>
+    <div>
+      <label for="startTime">開始時刻:</label>
+      <input type="datetime-local" id="startTime" style="display: none;">
+    </div>
+    <div>
+      <label for="endTime">終了時刻:</label>
+      <input type="datetime-local" id="endTime">
+    </div>
+  </div>
+
+  <div class="add-record">
+    <h2>勉強時間を追加</h2>
+    <div>
+      <label for="addSubjectSelect">科目:</label>
+      <select id="addSubjectSelect"></select>
+    </div>
+    <div>
+      <label for="addStartTime">開始時刻:</label>
+      <input type="datetime-local" id="addStartTime">
+    </div>
+    <div>
+      <label for="addEndTime">終了時刻:</label>
+      <input type="datetime-local" id="addEndTime">
+    </div>
+    <button id="addRecordButton">記録を追加</button>
+  </div>
+
+  <div class="subject-management">
+    <h2>科目管理</h2>
+    <input type="text" id="addSubject" placeholder="新しい科目">
+    <button id="addSubjectButton">追加</button>
+    <h3>科目一覧</h3>
+    <ul id="subjectList"></ul>
+  </div>
+
+  <h2>記録一覧</h2>
+  <ul id="recordList"></ul>
+
+  <div id="dailyTotal"></div>
+
+  <h2>勉強時間の推移</h2>
+  <canvas id="studyChart"></canvas>
+
+  <div id="summaryTable">
+    <h2>科目別・日付別 合計勉強時間</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>日付</th>
+          <th>科目</th>
+          <th>合計時間</th>
+        </tr>
+      </thead>
+      <tbody id="summaryTableBody">
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
+``` 
