@@ -611,6 +611,23 @@
 
   <div id="dailyTotal"></div>
 
+  <!-- ▼▼▼ ここを移動 ▼▼▼ -->
+  <div id="monthlySummaryArea" class="input-area">
+    <h2>科目別 月間総勉強時間</h2>
+    <label for="monthSelect">月選択：</label>
+    <select id="monthSelect"></select>
+    <table>
+      <thead>
+        <tr>
+          <th>科目</th>
+          <th>合計時間</th>
+        </tr>
+      </thead>
+      <tbody id="monthlySummaryBody"></tbody>
+    </table>
+  </div>
+  <!-- ▲▲▲ ここを移動 ▲▲▲ -->
+
   <h2>勉強時間の推移</h2>
   <canvas id="studyChart"></canvas>
 
@@ -626,21 +643,6 @@
       </thead>
       <tbody id="summaryTableBody">
       </tbody>
-    </table>
-  </div>
-
-  <div id="monthlySummaryArea" class="input-area">
-    <h2>科目別 月間総勉強時間</h2>
-    <label for="monthSelect">月選択：</label>
-    <select id="monthSelect"></select>
-    <table>
-      <thead>
-        <tr>
-          <th>科目</th>
-          <th>合計時間</th>
-        </tr>
-      </thead>
-      <tbody id="monthlySummaryBody"></tbody>
     </table>
   </div>
 </body>
