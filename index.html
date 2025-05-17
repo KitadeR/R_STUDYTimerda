@@ -135,6 +135,10 @@
       const addSubjectButton = document.getElementById('addSubjectButton');
       const subjectList = document.getElementById('subjectList');
       const recordList = document.getElementById('recordList');
+      const showMoreRecordsButton = document.getElementById('showMoreRecordsButton');
+      let allRecords = [];
+      let showingAll = false;
+
       const dailyTotalDiv = document.getElementById('dailyTotal');
       const studyChartCtx = document.getElementById('studyChart').getContext('2d');
       const startButton = document.createElement('button');
@@ -351,17 +355,31 @@
       // Load study records and listen for changes
       const qRecords = query(recordsCollection, orderBy('startTime', 'desc'));
       onSnapshot(qRecords, (snapshot) => {
-        recordList.innerHTML = '';
-        const subjectDailyTotals = {};
-
+        allRecords = [];
         snapshot.forEach(docSnap => {
+          allRecords.push(docSnap);
+        });
+
+        renderRecordList();
+
+        // ボタンの表示切り替え
+        if (allRecords.length > 5) {
+          showMoreRecordsButton.style.display = 'inline-block';
+          showMoreRecordsButton.textContent = showingAll ? '閉じる' : 'もっと見る';
+        } else {
+          showMoreRecordsButton.style.display = 'none';
+        }
+      });
+
+      function renderRecordList() {
+        recordList.innerHTML = '';
+        const recordsToShow = showingAll ? allRecords : allRecords.slice(0, 5);
+        recordsToShow.forEach(docSnap => {
           const data = docSnap.data();
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
           const durationMinutes = (end - start) / 1000 / 60;
           const subject = data.subject;
-          const dateKey = start.toISOString().split('T')[0];
-
           const durationDisplay = durationMinutes < 60 ? `${Math.floor(durationMinutes)}分` : `${(durationMinutes / 60).toFixed(2)}時間`;
 
           const li = document.createElement('li');
@@ -375,79 +393,13 @@
           });
           li.appendChild(deleteBtn);
           recordList.appendChild(li);
-
-          if(!subjectDailyTotals[dateKey]) subjectDailyTotals[dateKey] = {};
-          if(!subjectDailyTotals[dateKey][subject]) subjectDailyTotals[dateKey][subject] = 0;
-          subjectDailyTotals[dateKey][subject] += durationMinutes;
         });
+      }
 
-        summaryTableBody.innerHTML = '';
-        Object.keys(subjectDailyTotals).sort().forEach(date => {
-          const subjectsOnDate = subjectDailyTotals[date];
-          Object.keys(subjectsOnDate).forEach(subject => {
-            const totalMinutes = subjectsOnDate[subject];
-            const durationDisplay = totalMinutes < 60 ? `${Math.floor(totalMinutes)}分` : `${(totalMinutes / 60).toFixed(2)}時間`;
-
-            const row = summaryTableBody.insertRow();
-            const dateCell = row.insertCell();
-            const subjectCell = row.insertCell();
-            const durationCell = row.insertCell();
-            dateCell.textContent = date;
-            subjectCell.textContent = subject;
-            durationCell.textContent = durationDisplay;
-          });
-        });
-
-        // 日別合計の表示をチャートのみにするため、dailyTotalDiv の処理は残しつつ非表示にします。
-        const dailyTotalsForChart = {};
-        snapshot.forEach(docSnap => {
-          const start = docSnap.data().startTime.toDate();
-          const end = docSnap.data().endTime.toDate();
-          const durationMinutes = (end - start) / 1000 / 60;
-          const dateKey = start.toISOString().split('T')[0];
-          if(!dailyTotalsForChart[dateKey]) dailyTotalsForChart[dateKey] = 0;
-          dailyTotalsForChart[dateKey] += durationMinutes / 60; // hours
-        });
-
-        const labels = Object.keys(dailyTotalsForChart).sort();
-        const dataPoints = labels.map(date => dailyTotalsForChart[date]);
-        if(studyChart) {
-          studyChart.data.labels = labels;
-          studyChart.data.datasets[0].data = dataPoints;
-          studyChart.update();
-        } else {
-          studyChart = new Chart(studyChartCtx, {
-            type: 'line',
-            data: {
-              labels: labels,
-              datasets: [{
-                label: '勉強時間（時間）',
-                data: dataPoints,
-                borderColor: 'rgba(75, 192, 192, 1)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                fill: true,
-                tension: 0.1,
-              }]
-            },
-            options: {
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  title: {
-                    display: true,
-                    text: '時間 (h)'
-                  }
-                },
-                x: {
-                  title: {
-                    display: true,
-                    text: '日付'
-                  }
-                }
-              }
-            }
-          });
-        }
+      showMoreRecordsButton.addEventListener('click', () => {
+        showingAll = !showingAll;
+        renderRecordList();
+        showMoreRecordsButton.textContent = showingAll ? '閉じる' : 'もっと見る';
       });
     });
   </script>
@@ -498,6 +450,7 @@
 
   <h2>記録一覧</h2>
   <ul id="recordList"></ul>
+  <button id="showMoreRecordsButton" style="display:none;">もっと見る</button>
 
   <div id="dailyTotal"></div>
 
