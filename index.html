@@ -144,9 +144,7 @@
       const startTimeDisplay = document.createElement('span');
       startTimeDisplay.id = 'startTimeDisplay';
       let currentStartTime;
-      const summaryTableDiv = document.getElementById('summaryTable');
-
-      let studyChart;
+      let timerInterval = null; // ★ タイマー用
 
       const inputAreaDiv = document.querySelector('.input-area > div:first-child').parentNode;
       const recordControlDiv = document.createElement('div');
@@ -263,11 +261,33 @@
         }
       });
 
+      // 経過時間を「hh時間mm分ss秒」形式で返す関数
+      function formatElapsedTime(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        let result = '';
+        if (hours > 0) result += `${hours}時間`;
+        result += `${minutes}分${seconds}秒`;
+        return result;
+      }
+
       // Start timer
       startButton.addEventListener('click', () => {
         currentStartTime = new Date();
-        startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}`;
-        endTimeInput.value = ''; // Clear end time input
+        startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: 0分0秒`;
+        endTimeInput.value = '';
+        localStorage.setItem('studyTimerCurrentStartTime', currentStartTime.toISOString());
+        localStorage.setItem('studyTimerCurrentSubject', subjectInput.value.trim());
+
+        // ★タイマー開始
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          const now = new Date();
+          const diffMs = now - currentStartTime;
+          startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${formatElapsedTime(diffMs)}`;
+        }, 1000);
       });
 
       // End timer and record
@@ -277,7 +297,7 @@
           return;
         }
         const endTime = new Date();
-        endTimeInput.value = endTime.toISOString().slice(0, 16).replace('T', ' '); // Set end time input for visual feedback
+        endTimeInput.value = endTime.toISOString().slice(0, 16).replace('T', ' ');
 
         const subject = subjectInput.value.trim();
         if(subject === '') {
@@ -295,10 +315,38 @@
           startTimeDisplay.textContent = '';
           currentStartTime = null;
           endTimeInput.value = '';
+          localStorage.removeItem('studyTimerCurrentStartTime');
+          localStorage.removeItem('studyTimerCurrentSubject');
+          // ★タイマー停止
+          if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+          }
         } catch (e) {
           alert('記録の追加に失敗しました: ' + e.message);
         }
       });
+
+      // ★ページ読み込み時にローカルストレージから開始時間と科目を復元
+      const savedStartTime = localStorage.getItem('studyTimerCurrentStartTime');
+      const savedSubject = localStorage.getItem('studyTimerCurrentSubject');
+      if (savedStartTime) {
+        currentStartTime = new Date(savedStartTime);
+        if (savedSubject && subjectInput) {
+          subjectInput.value = savedSubject;
+        }
+        // ★経過時間も表示
+        const now = new Date();
+        const diffMs = now - currentStartTime;
+        startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${formatElapsedTime(diffMs)}`;
+        // ★タイマー再開
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          const now = new Date();
+          const diffMs = now - currentStartTime;
+          startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${formatElapsedTime(diffMs)}`;
+        }, 1000);
+      }
 
       // Load study records and listen for changes
       const qRecords = query(recordsCollection, orderBy('startTime', 'desc'));
@@ -472,4 +520,3 @@
   </div>
 </body>
 </html>
-``` 
