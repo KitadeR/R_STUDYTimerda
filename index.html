@@ -126,6 +126,8 @@
     const recordsCollection = collection(db, 'studyRecords');
     const subjectsCollection = collection(db, 'subjects');
 
+    let allRecords = []; // ← グローバルで宣言
+
     document.addEventListener('DOMContentLoaded', () => {
       const subjectInput = document.getElementById('subject');
       const startTimeInput = document.getElementById('startTime');
@@ -136,7 +138,6 @@
       const subjectList = document.getElementById('subjectList');
       const recordList = document.getElementById('recordList');
       const showMoreRecordsButton = document.getElementById('showMoreRecordsButton');
-      let allRecords = [];
       let showingAll = false;
 
       const dailyTotalDiv = document.getElementById('dailyTotal');
@@ -309,7 +310,7 @@
       onSnapshot(qRecords, (snapshot) => {
         // 記録一覧
         recordList.innerHTML = '';
-        const allRecords = [];
+        allRecords.length = 0; // 中身だけクリア
         snapshot.forEach(docSnap => {
           allRecords.push(docSnap);
           const data = docSnap.data();
