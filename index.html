@@ -321,6 +321,80 @@
         } else {
           showMoreRecordsButton.style.display = 'none';
         }
+
+        // ▼▼▼ グラフ描画 ▼▼▼
+        const dateTotals = {};
+        allRecords.forEach(docSnap => {
+          const data = docSnap.data();
+          const start = data.startTime.toDate();
+          const end = data.endTime.toDate();
+          const dateStr = start.toLocaleDateString();
+          const durationMinutes = (end - start) / 1000 / 60;
+          if (!dateTotals[dateStr]) dateTotals[dateStr] = 0;
+          dateTotals[dateStr] += durationMinutes / 60;
+        });
+        const chartLabels = Object.keys(dateTotals).sort();
+        const chartData = chartLabels.map(date => dateTotals[date]);
+
+        if (window.studyChart) {
+          window.studyChart.data.labels = chartLabels;
+          window.studyChart.data.datasets[0].data = chartData;
+          window.studyChart.update();
+        } else {
+          window.studyChart = new Chart(studyChartCtx, {
+            type: 'bar',
+            data: {
+              labels: chartLabels,
+              datasets: [{
+                label: '合計勉強時間（時間）',
+                data: chartData,
+                backgroundColor: '#4CAF50'
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                y: { beginAtZero: true, title: { display: true, text: '時間' } }
+              }
+            }
+          });
+        }
+
+        // ▼▼▼ テーブル描画 ▼▼▼
+        const summary = {};
+        allRecords.forEach(docSnap => {
+          const data = docSnap.data();
+          const start = data.startTime.toDate();
+          const end = data.endTime.toDate();
+          const dateStr = start.toLocaleDateString();
+          const subject = data.subject;
+          const durationMinutes = (end - start) / 1000 / 60;
+          if (!summary[dateStr]) summary[dateStr] = {};
+          if (!summary[dateStr][subject]) summary[dateStr][subject] = 0;
+          summary[dateStr][subject] += durationMinutes;
+        });
+
+        summaryTableBody.innerHTML = '';
+        Object.keys(summary).sort().forEach(date => {
+          Object.keys(summary[date]).forEach(subject => {
+            const tr = document.createElement('tr');
+            const tdDate = document.createElement('td');
+            tdDate.textContent = date;
+            const tdSubject = document.createElement('td');
+            tdSubject.textContent = subject;
+            const tdTotal = document.createElement('td');
+            tdTotal.textContent = summary[date][subject] < 60
+              ? `${Math.floor(summary[date][subject])}分`
+              : `${(summary[date][subject] / 60).toFixed(2)}時間`;
+            tr.appendChild(tdDate);
+            tr.appendChild(tdSubject);
+            tr.appendChild(tdTotal);
+            summaryTableBody.appendChild(tr);
+          });
+        });
       });
 
       function renderRecordList() {
@@ -425,4 +499,3 @@
   </div>
 </body>
 </html>
-``` 
