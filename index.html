@@ -409,6 +409,14 @@
               summaryTableBody.appendChild(tr);
             });
           });
+
+        // ▼▼ ここを追加 ▼▼
+        updateMonthOptions(allRecords);
+        // デフォルトは最新月
+        if (monthSelect.options.length > 0 && !monthSelect.value) {
+          monthSelect.value = monthSelect.options[monthSelect.options.length - 1].value;
+        }
+        renderMonthlySummary(allRecords, monthSelect.value);
       });
 
       function renderRecordList() {
@@ -440,6 +448,114 @@
         showingAll = !showingAll;
         renderRecordList();
         showMoreRecordsButton.textContent = showingAll ? '閉じる' : 'もっと見る';
+      });
+
+      // 月間総勉強時間の表示
+      const monthSelect = document.getElementById('monthSelect');
+      const monthlySummaryBody = document.getElementById('monthlySummaryBody');
+
+      // 月選択肢の生成
+      for (let m = 0; m < 12; m++) {
+        const monthOption = document.createElement('option');
+        monthOption.value = m;
+        monthOption.textContent = `${m + 1}月`;
+        monthSelect.appendChild(monthOption);
+      }
+
+      // 月間総勉強時間の取得と表示
+      monthSelect.addEventListener('change', async () => {
+        const selectedMonth = parseInt(monthSelect.value);
+        if (isNaN(selectedMonth)) return;
+
+        // 1日から月末までの範囲を取得
+        const startOfMonth = new Date(new Date().getFullYear(), selectedMonth, 1);
+        const endOfMonth = new Date(new Date().getFullYear(), selectedMonth + 1, 0, 23, 59, 59);
+
+        const qMonthlySummary = query(recordsCollection, where('startTime', '>=', Timestamp.fromDate(startOfMonth)), where('endTime', '<=', Timestamp.fromDate(endOfMonth)), orderBy('subject'));
+        onSnapshot(qMonthlySummary, (snapshot) => {
+          monthlySummaryBody.innerHTML = '';
+          const monthlyTotals = {};
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            const subject = data.subject;
+            const start = data.startTime.toDate();
+            const end = data.endTime.toDate();
+            const durationMinutes = (end - start) / 1000 / 60;
+            if (!monthlyTotals[subject]) monthlyTotals[subject] = 0;
+            monthlyTotals[subject] += durationMinutes;
+          });
+
+          Object.keys(monthlyTotals).forEach(subject => {
+            const tr = document.createElement('tr');
+            const tdSubject = document.createElement('td');
+            tdSubject.textContent = subject;
+            const tdTotal = document.createElement('td');
+            tdTotal.textContent = monthlyTotals[subject] < 60
+              ? `${Math.floor(monthlyTotals[subject])}分`
+              : `${(monthlyTotals[subject] / 60).toFixed(2)}時間`;
+            tr.appendChild(tdSubject);
+            tr.appendChild(tdTotal);
+            monthlySummaryBody.appendChild(tr);
+          });
+        });
+      });
+
+      // 初期表示は今月に設定
+      const now = new Date();
+      monthSelect.value = now.getMonth();
+      monthSelect.dispatchEvent(new Event('change'));
+
+      // 月選択肢をセット
+      function updateMonthOptions(allRecords) {
+        const months = new Set();
+        allRecords.forEach(docSnap => {
+          const data = docSnap.data();
+          const start = data.startTime.toDate();
+          const ym = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+          months.add(ym);
+        });
+        const sortedMonths = Array.from(months).sort((a, b) => new Date(a + '-01') - new Date(b + '-01'));
+        monthSelect.innerHTML = '';
+        sortedMonths.forEach(ym => {
+          const option = document.createElement('option');
+          option.value = ym;
+          option.textContent = ym.replace('-', '年') + '月';
+          monthSelect.appendChild(option);
+        });
+      }
+
+      // 月ごとの科目別合計を計算して表に描画
+      function renderMonthlySummary(allRecords, selectedMonth) {
+        const subjectTotals = {};
+        allRecords.forEach(docSnap => {
+          const data = docSnap.data();
+          const start = data.startTime.toDate();
+          const ym = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+          if (ym !== selectedMonth) return;
+          const subject = data.subject;
+          const end = data.endTime.toDate();
+          const durationMinutes = (end - start) / 1000 / 60;
+          if (!subjectTotals[subject]) subjectTotals[subject] = 0;
+          subjectTotals[subject] += durationMinutes;
+        });
+        monthlySummaryBody.innerHTML = '';
+        Object.keys(subjectTotals).sort().forEach(subject => {
+          const tr = document.createElement('tr');
+          const tdSubject = document.createElement('td');
+          tdSubject.textContent = subject;
+          const tdTotal = document.createElement('td');
+          tdTotal.textContent = subjectTotals[subject] < 60
+            ? `${Math.floor(subjectTotals[subject])}分`
+            : `${(subjectTotals[subject] / 60).toFixed(2)}時間`;
+          tr.appendChild(tdSubject);
+          tr.appendChild(tdTotal);
+          monthlySummaryBody.appendChild(tr);
+        });
+      }
+
+      // 月選択時に再描画
+      monthSelect.addEventListener('change', () => {
+        renderMonthlySummary(allRecords, monthSelect.value);
       });
     });
   </script>
@@ -509,6 +625,21 @@
       </thead>
       <tbody id="summaryTableBody">
       </tbody>
+    </table>
+  </div>
+
+  <div id="monthlySummaryArea" class="input-area">
+    <h2>科目別 月間総勉強時間</h2>
+    <label for="monthSelect">月選択：</label>
+    <select id="monthSelect"></select>
+    <table>
+      <thead>
+        <tr>
+          <th>科目</th>
+          <th>合計時間</th>
+        </tr>
+      </thead>
+      <tbody id="monthlySummaryBody"></tbody>
     </table>
   </div>
 </body>
