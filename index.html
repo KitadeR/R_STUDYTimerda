@@ -304,44 +304,56 @@
         }
       });
 
-      // Load study records and listen for changes
+      // 記録のリアルタイム表示・グラフ・テーブル
       const qRecords = query(recordsCollection, orderBy('startTime', 'desc'));
       onSnapshot(qRecords, (snapshot) => {
-        allRecords = [];
+        // 記録一覧
+        recordList.innerHTML = '';
+        const allRecords = [];
         snapshot.forEach(docSnap => {
           allRecords.push(docSnap);
+          const data = docSnap.data();
+          const start = data.startTime.toDate();
+          const end = data.endTime.toDate();
+          const durationMinutes = (end - start) / 1000 / 60;
+          const subject = data.subject;
+          const durationDisplay = durationMinutes < 60 ? `${Math.floor(durationMinutes)}分` : `${(durationMinutes / 60).toFixed(2)}時間`;
+
+          const li = document.createElement('li');
+          li.textContent = `${subject} : ${start.toLocaleString()} 〜 ${end.toLocaleString()} （${durationDisplay}）`;
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = '削除';
+          deleteBtn.addEventListener('click', async () => {
+            if(confirm('この記録を削除しますか？')){
+              await deleteDoc(doc(db, 'studyRecords', docSnap.id));
+            }
+          });
+          li.appendChild(deleteBtn);
+          recordList.appendChild(li);
         });
 
-        renderRecordList();
-
-        // ボタンの表示切り替え
-        if (allRecords.length > 5) {
-          showMoreRecordsButton.style.display = 'inline-block';
-          showMoreRecordsButton.textContent = showingAll ? '閉じる' : 'もっと見る';
-        } else {
-          showMoreRecordsButton.style.display = 'none';
-        }
-
-        // ▼▼▼ グラフ描画 ▼▼▼
+        // グラフ描画
         const dateTotals = {};
         allRecords.forEach(docSnap => {
           const data = docSnap.data();
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
-          const dateStr = start.toLocaleDateString();
+          // YYYY-MM-DD形式で統一
+          const dateStr = start.toISOString().slice(0, 10);
           const durationMinutes = (end - start) / 1000 / 60;
           if (!dateTotals[dateStr]) dateTotals[dateStr] = 0;
           dateTotals[dateStr] += durationMinutes / 60;
         });
-        const chartLabels = Object.keys(dateTotals).sort();
+        // 日付で昇順ソート
+        const chartLabels = Object.keys(dateTotals).sort((a, b) => new Date(a) - new Date(b));
         const chartData = chartLabels.map(date => dateTotals[date]);
 
-        if (window.studyChart) {
-          window.studyChart.data.labels = chartLabels;
-          window.studyChart.data.datasets[0].data = chartData;
-          window.studyChart.update();
+        if (studyChart) {
+          studyChart.data.labels = chartLabels;
+          studyChart.data.datasets[0].data = chartData;
+          studyChart.update();
         } else {
-          window.studyChart = new Chart(studyChartCtx, {
+          studyChart = new Chart(studyChartCtx, {
             type: 'bar',
             data: {
               labels: chartLabels,
@@ -363,13 +375,13 @@
           });
         }
 
-        // ▼▼▼ テーブル描画 ▼▼▼
+        // テーブル描画
         const summary = {};
         allRecords.forEach(docSnap => {
           const data = docSnap.data();
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
-          const dateStr = start.toLocaleDateString();
+          const dateStr = start.toISOString().slice(0, 10); // YYYY-MM-DD
           const subject = data.subject;
           const durationMinutes = (end - start) / 1000 / 60;
           if (!summary[dateStr]) summary[dateStr] = {};
@@ -378,23 +390,25 @@
         });
 
         summaryTableBody.innerHTML = '';
-        Object.keys(summary).sort().forEach(date => {
-          Object.keys(summary[date]).forEach(subject => {
-            const tr = document.createElement('tr');
-            const tdDate = document.createElement('td');
-            tdDate.textContent = date;
-            const tdSubject = document.createElement('td');
-            tdSubject.textContent = subject;
-            const tdTotal = document.createElement('td');
-            tdTotal.textContent = summary[date][subject] < 60
-              ? `${Math.floor(summary[date][subject])}分`
-              : `${(summary[date][subject] / 60).toFixed(2)}時間`;
-            tr.appendChild(tdDate);
-            tr.appendChild(tdSubject);
-            tr.appendChild(tdTotal);
-            summaryTableBody.appendChild(tr);
+        Object.keys(summary)
+          .sort((a, b) => new Date(a) - new Date(b)) // 日付で昇順
+          .forEach(date => {
+            Object.keys(summary[date]).forEach(subject => {
+              const tr = document.createElement('tr');
+              const tdDate = document.createElement('td');
+              tdDate.textContent = date;
+              const tdSubject = document.createElement('td');
+              tdSubject.textContent = subject;
+              const tdTotal = document.createElement('td');
+              tdTotal.textContent = summary[date][subject] < 60
+                ? `${Math.floor(summary[date][subject])}分`
+                : `${(summary[date][subject] / 60).toFixed(2)}時間`;
+              tr.appendChild(tdDate);
+              tr.appendChild(tdSubject);
+              tr.appendChild(tdTotal);
+              summaryTableBody.appendChild(tr);
+            });
           });
-        });
       });
 
       function renderRecordList() {
