@@ -110,6 +110,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getFirestore, collection, addDoc, orderBy, Timestamp, onSnapshot, query, deleteDoc, doc, getDocs, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAQGXHwTEcg-xGKvFi1V-vIPJwS-PR4_7Y",
@@ -125,6 +126,7 @@
     const db = getFirestore(app);
     const recordsCollection = collection(db, 'studyRecords');
     const subjectsCollection = collection(db, 'subjects');
+    const auth = getAuth(app);
 
     let allRecords = []; // ← グローバルで宣言
 
@@ -620,6 +622,14 @@
       // 月選択時に再描画
       monthSelect.addEventListener('change', () => {
         renderMonthlySummary(allRecords, monthSelect.value);
+      });
+
+      // ユーザーの認証状態を監視
+      onAuthStateChanged(auth, user => {
+        if (!user) {
+          // 未ログインならmain.htmlへリダイレクト
+          window.location.href = "main.html";
+        }
       });
     });
   </script>
