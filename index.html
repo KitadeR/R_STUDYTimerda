@@ -631,6 +631,46 @@
           window.location.href = "main.html";
         }
       });
+
+      const fullscreenTimer = document.getElementById('fullscreenTimer');
+      const fullscreenElapsed = document.getElementById('fullscreenElapsed');
+      const exitFullscreenTimer = document.getElementById('exitFullscreenTimer');
+      const showFullscreenBtn = document.createElement('button');
+      showFullscreenBtn.textContent = '全画面で経過時間表示';
+      showFullscreenBtn.style.marginLeft = '10px';
+      recordControlDiv.appendChild(showFullscreenBtn);
+
+      let fullscreenTimerInterval = null;
+
+      showFullscreenBtn.addEventListener('click', () => {
+        fullscreenTimer.style.display = 'flex';
+        updateFullscreenElapsed();
+        if (fullscreenTimerInterval) clearInterval(fullscreenTimerInterval);
+        fullscreenTimerInterval = setInterval(updateFullscreenElapsed, 1000);
+      });
+
+      exitFullscreenTimer.addEventListener('click', () => {
+        fullscreenTimer.style.display = 'none';
+        if (fullscreenTimerInterval) clearInterval(fullscreenTimerInterval);
+      });
+
+      function updateFullscreenElapsed() {
+        if (!currentStartTime) {
+          fullscreenElapsed.textContent = '計測中ではありません';
+          return;
+        }
+        const now = new Date();
+        const elapsedMs = now - currentStartTime;
+        const elapsedSec = Math.floor(elapsedMs / 1000);
+        const h = Math.floor(elapsedSec / 3600);
+        const m = Math.floor((elapsedSec % 3600) / 60);
+        const s = elapsedSec % 60;
+        let elapsedStr = '';
+        if (h > 0) elapsedStr += `${h}時間`;
+        if (m > 0 || h > 0) elapsedStr += `${m}分`;
+        elapsedStr += `${s}秒`;
+        fullscreenElapsed.textContent = elapsedStr;
+      }
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -717,6 +757,11 @@
       <tbody id="summaryTableBody">
       </tbody>
     </table>
+  </div>
+
+  <div id="fullscreenTimer" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#222;color:#fff;z-index:9999;align-items:center;justify-content:center;flex-direction:column;">
+    <div id="fullscreenElapsed" style="font-size:8vw;font-weight:bold;"></div>
+    <button id="exitFullscreenTimer" style="position:absolute;right:40px;bottom:40px;font-size:2vw;padding:1em 2em;">戻る</button>
   </div>
 </body>
 </html>
