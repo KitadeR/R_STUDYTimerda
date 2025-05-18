@@ -148,10 +148,19 @@
       startButton.textContent = '開始';
       const endButton = document.createElement('button');
       endButton.textContent = '終了';
+      const pauseButton = document.createElement('button'); // 追加
+      pauseButton.textContent = '休憩';
+      const resumeButton = document.createElement('button'); // 追加
+      resumeButton.textContent = '休憩終了';
+      resumeButton.style.display = 'none';
       const startTimeDisplay = document.createElement('span');
       startTimeDisplay.id = 'startTimeDisplay';
       let currentStartTime;
-      let elapsedTimerId = null; // ← 追加
+      let elapsedTimerId = null;
+      let pauseStartTime = null; // 休憩開始時刻
+      let pauseTimerId = null;   // 休憩タイマー
+      let totalPausedMs = 0;     // 休憩合計(ms)
+      let currentPausedMs = 0;   // 今回の休憩(ms)
 
       // ▼▼ ローカルストレージから復元 ▼▼
       if (localStorage.getItem('studyTimer_currentStartTime')) {
@@ -189,6 +198,8 @@
       recordControlDiv.classList.add('record-control');
       recordControlDiv.appendChild(startButton);
       recordControlDiv.appendChild(endButton);
+      recordControlDiv.appendChild(pauseButton);   // 追加
+      recordControlDiv.appendChild(resumeButton);  // 追加
       recordControlDiv.appendChild(startTimeDisplay);
       inputAreaDiv.appendChild(recordControlDiv);
 
@@ -206,6 +217,7 @@
       const addStartTime = document.getElementById('addStartTime');
       const addEndTime = document.getElementById('addEndTime');
       const addRecordButton = document.getElementById('addRecordButton');
+      const addPausedMinutes = document.getElementById('addPausedMinutes'); // 追加
 
       // 科目リストをドロップダウンに表示
       const qSubjects = query(subjectsCollection, orderBy('name'));
@@ -225,6 +237,7 @@
         const subject = addSubjectSelect.value;
         const startTime = addStartTime.value;
         const endTime = addEndTime.value;
+        const pausedMinutes = parseInt(document.getElementById('addPausedMinutes').value) || 0; // 追加
 
         if (!subject || !startTime || !endTime) {
           alert('すべての項目を入力してください');
@@ -243,12 +256,14 @@
           await addDoc(recordsCollection, {
             subject: subject,
             startTime: Timestamp.fromDate(start),
-            endTime: Timestamp.fromDate(end)
+            endTime: Timestamp.fromDate(end),
+            pausedMs: pausedMinutes * 60 * 1000 // 休憩時間（分→ミリ秒）
           });
           alert('勉強時間を追加しました');
           addStartTime.value = '';
           addEndTime.value = '';
           addSubjectSelect.value = '';
+          document.getElementById('addPausedMinutes').value = ''; // 追加
         } catch (error) {
           alert('勉強時間の追加に失敗しました: ' + error.message);
           console.error('勉強時間の追加エラー:', error);
@@ -302,35 +317,101 @@
       // Start timer
       startButton.addEventListener('click', () => {
         currentStartTime = new Date();
-        startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: 0秒`;
-        endTimeInput.value = ''; // Clear end time input
+        totalPausedMs = 0;
+        pauseStartTime = null;
+        currentPausedMs = 0;
+        startButton.disabled = true;
+        endButton.disabled = false;
+        pauseButton.disabled = false;
+        resumeButton.style.display = 'none';
+        pauseButton.style.display = '';
+        updateDisplay();
+        endTimeInput.value = '';
 
         // ▼▼ ローカルストレージに保存 ▼▼
         localStorage.setItem('studyTimer_currentStartTime', currentStartTime.toISOString());
         localStorage.setItem('studyTimer_subject', subjectInput.value.trim());
         // ▲▲ ローカルストレージに保存 ▲▲
 
-        // 経過時間タイマー開始
         if (elapsedTimerId) clearInterval(elapsedTimerId);
-        elapsedTimerId = setInterval(() => {
-          const now = new Date();
-          const elapsedMs = now - currentStartTime;
-          const elapsedSec = Math.floor(elapsedMs / 1000);
-          const h = Math.floor(elapsedSec / 3600);
-          const m = Math.floor((elapsedSec % 3600) / 60);
-          const s = elapsedSec % 60;
-          let elapsedStr = '';
-          if (h > 0) elapsedStr += `${h}時間`;
-          if (m > 0 || h > 0) elapsedStr += `${m}分`;
-          elapsedStr += `${s}秒`;
-          startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${elapsedStr}`;
+        if (pauseTimerId) clearInterval(pauseTimerId);
+        elapsedTimerId = setInterval(updateDisplay, 1000);
+      });
+
+      // 休憩ボタン
+      pauseButton.addEventListener('click', () => {
+        if (!currentStartTime || pauseStartTime) return;
+        pauseStartTime = new Date();
+        currentPausedMs = 0;
+        pauseButton.style.display = 'none';
+        resumeButton.style.display = '';
+        if (elapsedTimerId) clearInterval(elapsedTimerId);
+        if (pauseTimerId) clearInterval(pauseTimerId);
+        pauseTimerId = setInterval(() => {
+          updateDisplay();
         }, 1000);
       });
 
-      // 科目入力欄が変更されたらローカルストレージに保存
-      subjectInput.addEventListener('input', () => {
-        localStorage.setItem('studyTimer_subject', subjectInput.value.trim());
+      // 休憩終了ボタン
+      resumeButton.addEventListener('click', () => {
+        if (!pauseStartTime) return;
+        const now = new Date();
+        const paused = now - pauseStartTime;
+        totalPausedMs += paused;
+        pauseStartTime = null;
+        currentPausedMs = 0;
+        resumeButton.style.display = 'none';
+        pauseButton.style.display = '';
+        if (pauseTimerId) clearInterval(pauseTimerId);
+        if (elapsedTimerId) clearInterval(elapsedTimerId);
+        elapsedTimerId = setInterval(updateDisplay, 1000);
+        updateDisplay();
       });
+
+      // 表示更新（通常表示）
+      function updateDisplay() {
+        if (!currentStartTime) {
+          startTimeDisplay.textContent = '';
+          return;
+        }
+        const now = new Date();
+        let elapsedMs = now - currentStartTime - totalPausedMs;
+        let pausedMs = 0;
+        if (pauseStartTime) {
+          pausedMs = now - pauseStartTime;
+          elapsedMs -= pausedMs;
+        }
+        const elapsedSec = Math.floor(elapsedMs / 1000);
+        const pausedSec = Math.floor((totalPausedMs + pausedMs) / 1000);
+
+        // 経過時間
+        const h = Math.floor(elapsedSec / 3600);
+        const m = Math.floor((elapsedSec % 3600) / 60);
+        const s = elapsedSec % 60;
+        let elapsedStr = '';
+        if (h > 0) elapsedStr += `${h}時間`;
+        if (m > 0 || h > 0) elapsedStr += `${m}分`;
+        elapsedStr += `${s}秒`;
+
+        // 休憩時間
+        let pausedStr = '';
+        if (pausedSec > 0) {
+          const ph = Math.floor(pausedSec / 3600);
+          const pm = Math.floor((pausedSec % 3600) / 60);
+          const ps = pausedSec % 60;
+          if (ph > 0) pausedStr += `${ph}時間`;
+          if (pm > 0 || ph > 0) pausedStr += `${pm}分`;
+          pausedStr += `${ps}秒`;
+        }
+
+        if (pauseStartTime) {
+          startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${elapsedStr}　休憩中: ${pausedStr}`;
+        } else if (pausedSec > 0) {
+          startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${elapsedStr}　休憩合計: ${pausedStr}`;
+        } else {
+          startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${elapsedStr}`;
+        }
+      }
 
       // End timer and record
       endButton.addEventListener('click', async () => {
@@ -338,20 +419,24 @@
           alert('「開始」ボタンを押して時間を計測してください。');
           return;
         }
-        const endTime = new Date();
-        endTimeInput.value = endTime.toISOString().slice(0, 16).replace('T', ' '); // Set end time input for visual feedback
-
+        let endTime = new Date();
+        if (pauseStartTime) {
+          // 休憩中に終了した場合、休憩分も加算
+          totalPausedMs += endTime - pauseStartTime;
+          pauseStartTime = null;
+        }
+        endTimeInput.value = endTime.toISOString().slice(0, 16).replace('T', ' ');
         const subject = subjectInput.value.trim();
         if(subject === '') {
           alert('科目を入力してください');
           return;
         }
-
         try {
           await addDoc(recordsCollection, {
             subject: subject,
             startTime: Timestamp.fromDate(currentStartTime),
-            endTime: Timestamp.fromDate(endTime)
+            endTime: Timestamp.fromDate(endTime),
+            pausedMs: totalPausedMs // 休憩合計時間も保存
           });
           subjectInput.value = '';
           startTimeDisplay.textContent = '';
@@ -361,6 +446,15 @@
             clearInterval(elapsedTimerId);
             elapsedTimerId = null;
           }
+          if (pauseTimerId) {
+            clearInterval(pauseTimerId);
+            pauseTimerId = null;
+          }
+          startButton.disabled = false;
+          endButton.disabled = true;
+          pauseButton.disabled = true;
+          resumeButton.style.display = 'none';
+          pauseButton.style.display = '';
           // ▼▼ ローカルストレージをクリア ▼▼
           localStorage.removeItem('studyTimer_currentStartTime');
           localStorage.removeItem('studyTimer_subject');
@@ -375,18 +469,48 @@
       onSnapshot(qRecords, (snapshot) => {
         // 記録一覧
         recordList.innerHTML = '';
-        allRecords.length = 0; // 中身だけクリア
+        allRecords.length = 0;
+        const table = document.createElement('table');
+        table.style.width = '100%';
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>科目</th>
+              <th>開始</th>
+              <th>終了</th>
+              <th>実勉強</th>
+              <th>合計</th>
+              <th>休憩</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        const tbody = table.querySelector('tbody');
         snapshot.forEach(docSnap => {
           allRecords.push(docSnap);
           const data = docSnap.data();
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
           const durationMinutes = (end - start) / 1000 / 60;
+          const pausedMinutes = data.pausedMs ? Math.floor(data.pausedMs / 1000 / 60) : 0;
+          const realMinutes = durationMinutes - pausedMinutes;
           const subject = data.subject;
-          const durationDisplay = durationMinutes < 60 ? `${Math.floor(durationMinutes)}分` : `${(durationMinutes / 60).toFixed(2)}時間`;
 
-          const li = document.createElement('li');
-          li.textContent = `${subject} : ${start.toLocaleString()} 〜 ${end.toLocaleString()} （${durationDisplay}）`;
+          const realDisplay = realMinutes < 60 ? `${Math.floor(realMinutes)}分` : `${(realMinutes / 60).toFixed(2)}時間`;
+          const totalDisplay = durationMinutes < 60 ? `${Math.floor(durationMinutes)}分` : `${(durationMinutes / 60).toFixed(2)}時間`;
+          const pausedDisplay = pausedMinutes > 0 ? `${pausedMinutes}分` : '0分';
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${subject}</td>
+            <td>${start.toLocaleString()}</td>
+            <td>${end.toLocaleString()}</td>
+            <td>${realDisplay}</td>
+            <td>${totalDisplay}</td>
+            <td>${pausedDisplay}</td>
+            <td></td>
+          `;
           const deleteBtn = document.createElement('button');
           deleteBtn.textContent = '削除';
           deleteBtn.addEventListener('click', async () => {
@@ -394,9 +518,10 @@
               await deleteDoc(doc(db, 'studyRecords', docSnap.id));
             }
           });
-          li.appendChild(deleteBtn);
-          recordList.appendChild(li);
+          tr.lastElementChild.appendChild(deleteBtn);
+          tbody.appendChild(tr);
         });
+        recordList.appendChild(table);
 
         // グラフ描画
         const dateTotals = {};
@@ -404,13 +529,13 @@
           const data = docSnap.data();
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
-          // YYYY-MM-DD形式で統一
           const dateStr = start.toISOString().slice(0, 10);
           const durationMinutes = (end - start) / 1000 / 60;
+          const pausedMinutes = data.pausedMs ? data.pausedMs / 1000 / 60 : 0;
+          const realMinutes = durationMinutes - pausedMinutes;
           if (!dateTotals[dateStr]) dateTotals[dateStr] = 0;
-          dateTotals[dateStr] += durationMinutes / 60;
+          dateTotals[dateStr] += realMinutes / 60; // 時間単位
         });
-        // 日付で昇順ソート
         const chartLabels = Object.keys(dateTotals).sort((a, b) => new Date(a) - new Date(b));
         const chartData = chartLabels.map(date => dateTotals[date]);
 
@@ -424,7 +549,7 @@
             data: {
               labels: chartLabels,
               datasets: [{
-                label: '合計勉強時間（時間）',
+                label: '実勉強時間（時間）',
                 data: chartData,
                 backgroundColor: '#4CAF50'
               }]
@@ -443,35 +568,42 @@
 
         // テーブル描画
         const summary = {};
+        const pausedSummary = {};
         allRecords.forEach(docSnap => {
           const data = docSnap.data();
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
-          const dateStr = start.toISOString().slice(0, 10); // YYYY-MM-DD
+          const dateStr = start.toISOString().slice(0, 10);
           const subject = data.subject;
           const durationMinutes = (end - start) / 1000 / 60;
+          const pausedMinutes = data.pausedMs ? data.pausedMs / 1000 / 60 : 0;
           if (!summary[dateStr]) summary[dateStr] = {};
+          if (!pausedSummary[dateStr]) pausedSummary[dateStr] = {};
           if (!summary[dateStr][subject]) summary[dateStr][subject] = 0;
+          if (!pausedSummary[dateStr][subject]) pausedSummary[dateStr][subject] = 0;
           summary[dateStr][subject] += durationMinutes;
+          pausedSummary[dateStr][subject] += pausedMinutes;
         });
 
         summaryTableBody.innerHTML = '';
         Object.keys(summary)
-          .sort((a, b) => new Date(a) - new Date(b)) // 日付で昇順
+          .sort((a, b) => new Date(a) - new Date(b))
           .forEach(date => {
             Object.keys(summary[date]).forEach(subject => {
+              const total = summary[date][subject];
+              const paused = pausedSummary[date][subject];
+              const real = total - paused;
+              const realDisplay = real < 60 ? `${Math.floor(real)}分` : `${(real / 60).toFixed(2)}時間`;
+              const totalDisplay = total < 60 ? `${Math.floor(total)}分` : `${(total / 60).toFixed(2)}時間`;
+              const pausedDisplay = paused > 0 ? `${Math.round(paused)}分` : '0分';
               const tr = document.createElement('tr');
-              const tdDate = document.createElement('td');
-              tdDate.textContent = date;
-              const tdSubject = document.createElement('td');
-              tdSubject.textContent = subject;
-              const tdTotal = document.createElement('td');
-              tdTotal.textContent = summary[date][subject] < 60
-                ? `${Math.floor(summary[date][subject])}分`
-                : `${(summary[date][subject] / 60).toFixed(2)}時間`;
-              tr.appendChild(tdDate);
-              tr.appendChild(tdSubject);
-              tr.appendChild(tdTotal);
+              tr.innerHTML = `
+                <td>${date}</td>
+                <td>${subject}</td>
+                <td>${realDisplay}</td>
+                <td>${totalDisplay}</td>
+                <td>${pausedDisplay}</td>
+              `;
               summaryTableBody.appendChild(tr);
             });
           });
@@ -493,11 +625,17 @@
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
           const durationMinutes = (end - start) / 1000 / 60;
+          const pausedMinutes = data.pausedMs ? Math.floor(data.pausedMs / 1000 / 60) : 0;
+          const realMinutes = durationMinutes - pausedMinutes;
           const subject = data.subject;
-          const durationDisplay = durationMinutes < 60 ? `${Math.floor(durationMinutes)}分` : `${(durationMinutes / 60).toFixed(2)}時間`;
+
+          // 表示用
+          const realDisplay = realMinutes < 60 ? `${Math.floor(realMinutes)}分` : `${(realMinutes / 60).toFixed(2)}時間`;
+          const totalDisplay = durationMinutes < 60 ? `${Math.floor(durationMinutes)}分` : `${(durationMinutes / 60).toFixed(2)}時間`;
+          const pausedDisplay = pausedMinutes > 0 ? `${pausedMinutes}分` : '0分';
 
           const li = document.createElement('li');
-          li.textContent = `${subject} : ${start.toLocaleString()} 〜 ${end.toLocaleString()} （${durationDisplay}）`;
+          li.textContent = `${subject} : ${start.toLocaleString()} 〜 ${end.toLocaleString()}　実勉強: ${realDisplay} ／ 合計: ${totalDisplay} ／ 休憩: ${pausedDisplay}`;
           const deleteBtn = document.createElement('button');
           deleteBtn.textContent = '削除';
           deleteBtn.addEventListener('click', async () => {
@@ -551,16 +689,21 @@
             monthlyTotals[subject] += durationMinutes;
           });
 
-          Object.keys(monthlyTotals).forEach(subject => {
+          monthlySummaryBody.innerHTML = '';
+          Object.keys(monthlyTotals).sort().forEach(subject => {
+            const total = monthlyTotals[subject];
+            const paused = subjectPaused[subject];
+            const real = total - paused;
+            const realDisplay = real < 60 ? `${Math.floor(real)}分` : `${(real / 60).toFixed(2)}時間`;
+            const totalDisplay = total < 60 ? `${Math.floor(total)}分` : `${(total / 60).toFixed(2)}時間`;
+            const pausedDisplay = paused > 0 ? `${Math.round(paused)}分` : '0分';
             const tr = document.createElement('tr');
-            const tdSubject = document.createElement('td');
-            tdSubject.textContent = subject;
-            const tdTotal = document.createElement('td');
-            tdTotal.textContent = monthlyTotals[subject] < 60
-              ? `${Math.floor(monthlyTotals[subject])}分`
-              : `${(monthlyTotals[subject] / 60).toFixed(2)}時間`;
-            tr.appendChild(tdSubject);
-            tr.appendChild(tdTotal);
+            tr.innerHTML = `
+              <td>${subject}</td>
+              <td>${realDisplay}</td>
+              <td>${totalDisplay}</td>
+              <td>${pausedDisplay}</td>
+            `;
             monthlySummaryBody.appendChild(tr);
           });
         });
@@ -593,6 +736,7 @@
       // 月ごとの科目別合計を計算して表に描画
       function renderMonthlySummary(allRecords, selectedMonth) {
         const subjectTotals = {};
+        const subjectPaused = {};
         allRecords.forEach(docSnap => {
           const data = docSnap.data();
           const start = data.startTime.toDate();
@@ -601,20 +745,27 @@
           const subject = data.subject;
           const end = data.endTime.toDate();
           const durationMinutes = (end - start) / 1000 / 60;
+          const pausedMinutes = data.pausedMs ? data.pausedMs / 1000 / 60 : 0;
           if (!subjectTotals[subject]) subjectTotals[subject] = 0;
+          if (!subjectPaused[subject]) subjectPaused[subject] = 0;
           subjectTotals[subject] += durationMinutes;
+          subjectPaused[subject] += pausedMinutes;
         });
         monthlySummaryBody.innerHTML = '';
         Object.keys(subjectTotals).sort().forEach(subject => {
+          const total = subjectTotals[subject];
+          const paused = subjectPaused[subject];
+          const real = total - paused;
+          const realDisplay = real < 60 ? `${Math.floor(real)}分` : `${(real / 60).toFixed(2)}時間`;
+          const totalDisplay = total < 60 ? `${Math.floor(total)}分` : `${(total / 60).toFixed(2)}時間`;
+          const pausedDisplay = paused > 0 ? `${Math.round(paused)}分` : '0分';
           const tr = document.createElement('tr');
-          const tdSubject = document.createElement('td');
-          tdSubject.textContent = subject;
-          const tdTotal = document.createElement('td');
-          tdTotal.textContent = subjectTotals[subject] < 60
-            ? `${Math.floor(subjectTotals[subject])}分`
-            : `${(subjectTotals[subject] / 60).toFixed(2)}時間`;
-          tr.appendChild(tdSubject);
-          tr.appendChild(tdTotal);
+          tr.innerHTML = `
+            <td>${subject}</td>
+            <td>${realDisplay}</td>
+            <td>${totalDisplay}</td>
+            <td>${pausedDisplay}</td>
+          `;
           monthlySummaryBody.appendChild(tr);
         });
       }
@@ -654,13 +805,17 @@
         if (fullscreenTimerInterval) clearInterval(fullscreenTimerInterval);
       });
 
+      // --- フルスクリーン表示は経過時間のみ ---
       function updateFullscreenElapsed() {
         if (!currentStartTime) {
           fullscreenElapsed.textContent = '計測中ではありません';
           return;
         }
         const now = new Date();
-        const elapsedMs = now - currentStartTime;
+        let elapsedMs = now - currentStartTime - totalPausedMs;
+        if (pauseStartTime) {
+          elapsedMs -= (now - pauseStartTime);
+        }
         const elapsedSec = Math.floor(elapsedMs / 1000);
         const h = Math.floor(elapsedSec / 3600);
         const m = Math.floor((elapsedSec % 3600) / 60);
@@ -707,6 +862,10 @@
       <label for="addEndTime">終了時刻:</label>
       <input type="datetime-local" id="addEndTime">
     </div>
+    <div>
+      <label for="addPausedMinutes">休憩時間:</label>
+      <input type="number" id="addPausedMinutes" min="0" inputmode="numeric" pattern="[0-9]*" placeholder="分">
+    </div>
     <button id="addRecordButton">記録を追加</button>
   </div>
 
@@ -751,7 +910,9 @@
         <tr>
           <th>日付</th>
           <th>科目</th>
-          <th>合計時間</th>
+          <th>実勉強</th>
+          <th>合計</th>
+          <th>休憩</th>
         </tr>
       </thead>
       <tbody id="summaryTableBody">
