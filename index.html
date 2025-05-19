@@ -166,22 +166,27 @@
       if (localStorage.getItem('studyTimer_currentStartTime')) {
         currentStartTime = new Date(localStorage.getItem('studyTimer_currentStartTime'));
         if (!isNaN(currentStartTime)) {
+          // 休憩合計復元
+          totalPausedMs = parseInt(localStorage.getItem('studyTimer_totalPausedMs')) || 0;
+          // 休憩開始時刻復元
+          if (localStorage.getItem('studyTimer_pauseStartTime')) {
+            pauseStartTime = new Date(localStorage.getItem('studyTimer_pauseStartTime'));
+            pauseButton.style.display = 'none';
+            resumeButton.style.display = '';
+            // 休憩タイマー再開
+            if (pauseTimerId) clearInterval(pauseTimerId);
+            pauseTimerId = setInterval(() => {
+              updateDisplay();
+            }, 1000);
+          } else {
+            pauseStartTime = null;
+            pauseButton.style.display = '';
+            resumeButton.style.display = 'none';
+            // 経過時間タイマー再開
+            if (elapsedTimerId) clearInterval(elapsedTimerId);
+            elapsedTimerId = setInterval(updateDisplay, 1000);
+          }
           startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: 0秒`;
-          // 経過時間タイマー再開
-          if (elapsedTimerId) clearInterval(elapsedTimerId);
-          elapsedTimerId = setInterval(() => {
-            const now = new Date();
-            const elapsedMs = now - currentStartTime;
-            const elapsedSec = Math.floor(elapsedMs / 1000);
-            const h = Math.floor(elapsedSec / 3600);
-            const m = Math.floor((elapsedSec % 3600) / 60);
-            const s = elapsedSec % 60;
-            let elapsedStr = '';
-            if (h > 0) elapsedStr += `${h}時間`;
-            if (m > 0 || h > 0) elapsedStr += `${m}分`;
-            elapsedStr += `${s}秒`;
-            startTimeDisplay.textContent = `開始: ${currentStartTime.toLocaleTimeString()}　経過: ${elapsedStr}`;
-          }, 1000);
         }
       }
       if (localStorage.getItem('studyTimer_subject')) {
@@ -331,6 +336,8 @@
         // ▼▼ ローカルストレージに保存 ▼▼
         localStorage.setItem('studyTimer_currentStartTime', currentStartTime.toISOString());
         localStorage.setItem('studyTimer_subject', subjectInput.value.trim());
+        localStorage.setItem('studyTimer_totalPausedMs', totalPausedMs);
+        localStorage.removeItem('studyTimer_pauseStartTime');
         // ▲▲ ローカルストレージに保存 ▲▲
 
         if (elapsedTimerId) clearInterval(elapsedTimerId);
@@ -345,6 +352,9 @@
         currentPausedMs = 0;
         pauseButton.style.display = 'none';
         resumeButton.style.display = '';
+        // ▼▼ 休憩開始時刻を保存 ▼▼
+        localStorage.setItem('studyTimer_pauseStartTime', pauseStartTime.toISOString());
+        // ▲▲
         if (elapsedTimerId) clearInterval(elapsedTimerId);
         if (pauseTimerId) clearInterval(pauseTimerId);
         pauseTimerId = setInterval(() => {
@@ -362,6 +372,10 @@
         currentPausedMs = 0;
         resumeButton.style.display = 'none';
         pauseButton.style.display = '';
+        // ▼▼ 休憩終了時、休憩開始時刻を削除・合計を保存 ▼▼
+        localStorage.removeItem('studyTimer_pauseStartTime');
+        localStorage.setItem('studyTimer_totalPausedMs', totalPausedMs);
+        // ▲▲
         if (pauseTimerId) clearInterval(pauseTimerId);
         if (elapsedTimerId) clearInterval(elapsedTimerId);
         elapsedTimerId = setInterval(updateDisplay, 1000);
@@ -458,6 +472,8 @@
           // ▼▼ ローカルストレージをクリア ▼▼
           localStorage.removeItem('studyTimer_currentStartTime');
           localStorage.removeItem('studyTimer_subject');
+          localStorage.removeItem('studyTimer_pauseStartTime');
+          localStorage.removeItem('studyTimer_totalPausedMs');
           // ▲▲ ローカルストレージをクリア ▲▲
         } catch (e) {
           alert('記録の追加に失敗しました: ' + e.message);
@@ -785,6 +801,7 @@
 
       const fullscreenTimer = document.getElementById('fullscreenTimer');
       const fullscreenElapsed = document.getElementById('fullscreenElapsed');
+      const fullscreenNow = document.getElementById('fullscreenNow'); // 追加
       const exitFullscreenTimer = document.getElementById('exitFullscreenTimer');
       const showFullscreenBtn = document.createElement('button');
       showFullscreenBtn.textContent = '全画面で経過時間表示';
@@ -805,8 +822,15 @@
         if (fullscreenTimerInterval) clearInterval(fullscreenTimerInterval);
       });
 
-      // --- フルスクリーン表示は経過時間のみ ---
+      // --- フルスクリーン表示は経過時間＋現時刻（時:分） ---
       function updateFullscreenElapsed() {
+        // 現時刻の表示（時:分のみ）
+        const nowDate = new Date();
+        const hh = String(nowDate.getHours()).padStart(2, '0');
+        const mm = String(nowDate.getMinutes()).padStart(2, '0');
+        fullscreenNow.textContent = `${hh}:${mm}`;
+
+        // 経過時間の表示
         if (!currentStartTime) {
           fullscreenElapsed.textContent = '計測中ではありません';
           return;
@@ -921,6 +945,7 @@
   </div>
 
   <div id="fullscreenTimer" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#222;color:#fff;z-index:9999;align-items:center;justify-content:center;flex-direction:column;">
+    <div id="fullscreenNow" style="font-size:4vw;margin-bottom:2vw;"></div> <!-- 追加 -->
     <div id="fullscreenElapsed" style="font-size:8vw;font-weight:bold;"></div>
     <button id="exitFullscreenTimer" style="position:absolute;right:40px;bottom:40px;font-size:2vw;padding:1em 2em;">戻る</button>
   </div>
