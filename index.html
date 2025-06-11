@@ -486,6 +486,12 @@
         // 記録一覧
         recordList.innerHTML = '';
         allRecords.length = 0;
+        snapshot.forEach(docSnap => {
+          allRecords.push(docSnap);
+        });
+
+        // ここで最新5件だけ表示
+        const recordsToShow = allRecords.slice(0, 5);
         const table = document.createElement('table');
         table.style.width = '100%';
         table.innerHTML = `
@@ -503,8 +509,7 @@
           <tbody></tbody>
         `;
         const tbody = table.querySelector('tbody');
-        snapshot.forEach(docSnap => {
-          allRecords.push(docSnap);
+        recordsToShow.forEach(docSnap => {
           const data = docSnap.data();
           const start = data.startTime.toDate();
           const end = data.endTime.toDate();
@@ -538,6 +543,13 @@
           tbody.appendChild(tr);
         });
         recordList.appendChild(table);
+
+        // 「もっと見る」ボタンの表示制御
+        if (allRecords.length > 5) {
+          showMoreRecordsButton.style.display = '';
+        } else {
+          showMoreRecordsButton.style.display = 'none';
+        }
 
         // グラフ描画
         const dateTotals = {};
