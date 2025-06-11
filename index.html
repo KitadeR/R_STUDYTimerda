@@ -850,9 +850,67 @@
         elapsedStr += `${s}秒`;
         fullscreenElapsed.textContent = elapsedStr;
       }
+
+      // --- 通知許可リクエスト関数 ---
+      async function requestNotificationPermission() {
+        if ('Notification' in window && Notification.permission !== 'granted') {
+          await Notification.requestPermission();
+        }
+      }
+
+      // --- 25分ごと通知タイマー ---
+      let pomodoroInterval = null;
+      let lastPomodoroElapsed = 0;
+
+      function startPomodoroNotification() {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          if (pomodoroInterval) clearInterval(pomodoroInterval);
+          lastPomodoroElapsed = 0;
+          pomodoroInterval = setInterval(() => {
+            if (!currentStartTime) return;
+            const now = new Date();
+            let elapsedMs = now - currentStartTime - totalPausedMs;
+            if (pauseStartTime) {
+              elapsedMs -= (now - pauseStartTime);
+            }
+            const elapsedMin = Math.floor(elapsedMs / 1000 / 60);
+            // 25分ごとに通知（例: 25, 50, 75...分）
+            if (elapsedMin > 0 && elapsedMin % 25 === 0 && elapsedMin !== lastPomodoroElapsed) {
+              // 経過時間の文字列
+              const h = Math.floor(elapsedMin / 60);
+              const m = elapsedMin % 60;
+              let elapsedStr = '';
+              if (h > 0) elapsedStr += `${h}時間`;
+              if (m > 0 || h > 0) elapsedStr += `${m}分`;
+              // 通知
+              new Notification('25分経過', {
+                body: `経過時間: ${elapsedStr}`
+              });
+              lastPomodoroElapsed = elapsedMin;
+            }
+          }, 10000); // 10秒ごとにチェック
+        }
+      }
+
+      function stopPomodoroNotification() {
+        if (pomodoroInterval) clearInterval(pomodoroInterval);
+        pomodoroInterval = null;
+        lastPomodoroElapsed = 0;
+      }
+
+      // --- 開始・終了ボタンに通知処理を追加 ---
+      startButton.addEventListener('click', async () => {
+        await requestNotificationPermission();
+        startPomodoroNotification();
+      });
+
+      endButton.addEventListener('click', () => {
+        stopPomodoroNotification();
+      });
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
   <h1>勉強時間記録</h1>
@@ -949,5 +1007,20 @@
     <div id="fullscreenElapsed" style="font-size:8vw;font-weight:bold;"></div>
     <button id="exitFullscreenTimer" style="position:absolute;right:40px;bottom:40px;font-size:2vw;padding:1em 2em;">戻る</button>
   </div>
+
+  <script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+  </script>
 </body>
 </html>
+self.addEventListener('install', event => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', event => {
+  event.waitUntil(self.clients.claim());
+});
+self.addEventListener('fetch', event => {
+  // オフラインキャッシュ等は必要に応じて追加
+});
