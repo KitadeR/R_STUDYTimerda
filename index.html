@@ -452,6 +452,31 @@
             endTime: Timestamp.fromDate(endTime),
             pausedMs: totalPausedMs // 休憩合計時間も保存
           });
+
+          // ▼▼ ここから修正 ▼▼
+          const durationMinutes = (endTime - currentStartTime) / 1000 / 60;
+          const pausedMinutes = totalPausedMs ? Math.floor(totalPausedMs / 1000 / 60) : 0;
+          const realMinutes = durationMinutes - pausedMinutes;
+          const realSeconds = Math.floor((durationMinutes - pausedMinutes) * 60);
+
+          let realDisplay = '';
+          if (realMinutes < 1) {
+            // 1分未満 → 秒のみ
+            realDisplay = `${realSeconds}秒`;
+          } else if (realMinutes < 60) {
+            // 1時間未満 → 分と秒
+            const min = Math.floor(realMinutes);
+            const sec = realSeconds - min * 60;
+            realDisplay = `${min}分${sec}秒`;
+          } else {
+            // 1時間以上 → 時間と分
+            const hour = Math.floor(realMinutes / 60);
+            const min = Math.floor(realMinutes % 60);
+            realDisplay = `${hour}時間${min}分`;
+          }
+          alert(`お疲れさまでした。\nあなたは${realDisplay}勉強しました。`);
+          // ▲▲ ここまで修正 ▲▲
+
           subjectInput.value = '';
           startTimeDisplay.textContent = '';
           currentStartTime = null;
@@ -751,14 +776,25 @@
           const ym = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
           months.add(ym);
         });
-        const sortedMonths = Array.from(months).sort((a, b) => new Date(a + '-01') - new Date(b + '-01'));
+        // 降順（新しい順）でソート
+        const sortedMonths = Array.from(months).sort((a, b) => new Date(b + '-01') - new Date(a + '-01'));
+
+        // 現在の年月
+        const now = new Date();
+        const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        // 先頭に今月を追加（重複しないように）
+        const monthList = [currentYm, ...sortedMonths.filter(m => m !== currentYm)];
+
         monthSelect.innerHTML = '';
-        sortedMonths.forEach(ym => {
+        monthList.forEach(ym => {
           const option = document.createElement('option');
           option.value = ym;
           option.textContent = ym.replace('-', '年') + '月';
           monthSelect.appendChild(option);
         });
+        // 今月を選択状態に
+        monthSelect.value = currentYm;
       }
 
       // 月ごとの科目別合計を計算して表に描画
