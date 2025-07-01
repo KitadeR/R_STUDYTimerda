@@ -844,7 +844,29 @@
         if (!user) {
           // 未ログインならmain.htmlへリダイレクト
           window.location.href = "main.html";
+          return;
         }
+
+        // ▼▼ ここから追加 ▼▼
+        // ログイン時刻をlocalStorageに保存
+        if (!localStorage.getItem('loginTime')) {
+          localStorage.setItem('loginTime', Date.now());
+        }
+
+        // 12時間経過チェック
+        function checkLoginTimeout() {
+          const loginTime = parseInt(localStorage.getItem('loginTime'), 10);
+          if (Date.now() - loginTime > 12 * 60 * 60 * 1000) { // 12時間
+            alert('12時間経過したため自動的にログアウトします。');
+            auth.signOut();
+            localStorage.removeItem('loginTime');
+          }
+        }
+
+        // 1分ごとにチェック
+        setInterval(checkLoginTimeout, 60 * 1000);
+        checkLoginTimeout();
+        // ▲▲ ここまで追加 ▲▲
       });
 
       const fullscreenTimer = document.getElementById('fullscreenTimer');
@@ -1056,19 +1078,24 @@
     <button id="exitFullscreenTimer" style="position:absolute;right:40px;bottom:40px;font-size:2vw;padding:1em 2em;">戻る</button>
   </div>
 
+  <div style="text-align:center; margin: 40px 0 10px 0;">
+    <button id="logoutButton" style="background:#e74c3c;color:#fff;padding:10px 30px;font-size:1.2em;border:none;border-radius:6px;cursor:pointer;">
+      ログアウト
+    </button>
+  </div>
+
   <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
 }
+
+// ▼▼ ログアウトボタンの処理 ▼▼
+document.getElementById('logoutButton').addEventListener('click', async () => {
+  const { getAuth, signOut } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+  const auth = getAuth();
+  await signOut(auth);
+  localStorage.removeItem('loginTime');
+});
   </script>
 </body>
 </html>
-self.addEventListener('install', event => {
-  self.skipWaiting();
-});
-self.addEventListener('activate', event => {
-  event.waitUntil(self.clients.claim());
-});
-self.addEventListener('fetch', event => {
-  // オフラインキャッシュ等は必要に応じて追加
-});
