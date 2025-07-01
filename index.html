@@ -474,7 +474,18 @@
             const min = Math.floor(realMinutes % 60);
             realDisplay = `${hour}時間${min}分`;
           }
-          alert(`お疲れさまでした。\nあなたは${realDisplay}勉強しました。`);
+          // 休憩時間の表示
+          let pausedDisplay = '';
+          if (pausedMinutes < 1) {
+            pausedDisplay = `${Math.floor(totalPausedMs / 1000)}秒`;
+          } else if (pausedMinutes < 60) {
+            pausedDisplay = `${pausedMinutes}分`;
+          } else {
+            const hour = Math.floor(pausedMinutes / 60);
+            const min = Math.floor(pausedMinutes % 60);
+            pausedDisplay = `${hour}時間${min}分`;
+          }
+          alert(`お疲れさまでした。\n実勉強時間: ${realDisplay}\n休憩時間: ${pausedDisplay}`);
           // ▲▲ ここまで修正 ▲▲
 
           subjectInput.value = '';
